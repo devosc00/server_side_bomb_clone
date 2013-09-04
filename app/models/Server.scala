@@ -58,7 +58,7 @@ object Server {
         .mapDone { _ =>
           default ! Quit(username)
         }
-        (iteratee,enumerator)1
+        (iteratee,enumerator)
 
        case CannotConnect(error) => 
       
@@ -109,7 +109,6 @@ class Server extends Actor {
         val enumerator = Concurrent.unicast[JsValue]{
              c => members = members + (username -> c)}
         sender ! Connected(enumerator)
-<<<<<<< HEAD
         self ! NotifyJoin(username)
       }
     }
@@ -135,15 +134,12 @@ class Server extends Actor {
         case "bomb" => self ! Bomb(username)
         case "quit" => self ! Quit(username)
         case _ => println("Unnable to parse message %s".format(event.toString))
-=======
->>>>>>> dfa872cf26dbed7d4de420bb12af431494ccd54b
       }
     }
 
     //dostaje plansze
     case Mapa(username) => {
       for (channel <- members.get(username)){
-<<<<<<< HEAD
        channel.push(Json.obj(
           "command"-> "mapa",
           "data" -> (data),
@@ -159,14 +155,6 @@ class Server extends Actor {
                               }
                               ret}.toSeq:_*)  
           ))
-=======
-       channel.push(Json.arr(Json.obj(
-          "command"-> "mapa",
-          "data" -> (data),
-          "players" -> (players.toString),
-          "scoreboard" -> Json.arr(scoreboard.toString)
-          )))
->>>>>>> dfa872cf26dbed7d4de420bb12af431494ccd54b
       } 
     } 
         
@@ -177,7 +165,6 @@ class Server extends Actor {
       for(channel <- members.values){
       channel.push(Json.obj(
           "command" -> "move", 
-<<<<<<< HEAD
           "username" -> username,
           "pos" -> Json.arr(pos.x, pos.y)))
       }
@@ -186,16 +173,6 @@ class Server extends Actor {
     case Bomb(username) => {
       bombCounter(username)
       players(username)
-=======
-    		  "username" -> username,
-    		  "pos" -> Json.arr(pos.x, pos.y)))
-      }
-    }
-    
-    case Bomb(username: String) => {
-      bombCounter(username)
-      players.username
->>>>>>> dfa872cf26dbed7d4de420bb12af431494ccd54b
     }
    
 
@@ -223,47 +200,27 @@ class Server extends Actor {
    
   
   def bombCounter(username: String) = {
-<<<<<<< HEAD
     val pos = players(username)
      if (haveBomb(username)) { 
       for (channel <- members.values){
         channel.push(Json.obj(
-=======
-    val pos = players.username
-     if (haveBomb(username)) { 
-      for (channel <- members.values){
-        channel.push(Json.arr(Json.obj(
->>>>>>> dfa872cf26dbed7d4de420bb12af431494ccd54b
           "command" -> "bomb",
           "x" -> pos.x,
           "y" -> pos.y)
           )
-<<<<<<< HEAD
       }
       Thread.sleep(2000)
       for(channel <- members.values){
       channel.push(Json.obj(
-=======
-        )
-      }
-      Thread.sleep(2000)
-      for(channel <- members.values){
-      channel.push(Json.arr(Json.obj(
->>>>>>> dfa872cf26dbed7d4de420bb12af431494ccd54b
         "comand" -> "fire",
         "player" -> username,
         "x" -> pos.x ,
         "y" -> pos.y)
-<<<<<<< HEAD
-=======
-        )
->>>>>>> dfa872cf26dbed7d4de420bb12af431494ccd54b
       )
     }
            reduceBomb(username)
            updateBombs(username)
            val killed = explosionArea(pos)
-<<<<<<< HEAD
            for(kill <- killed)
              for(channel <- members.get(kill)){
                 updateScoreboard(username)
@@ -272,15 +229,6 @@ class Server extends Actor {
               )
             )
         }
-=======
-           for(kill <- killed
-               channel <- members.get(kill)){
-            updateScoreboard(username)
-            channel.push(Json.arr(Json.obj(
-              "command" -> "death",
-              )))
-           }
->>>>>>> dfa872cf26dbed7d4de420bb12af431494ccd54b
 
     }
   }                                              
@@ -310,27 +258,13 @@ class Server extends Actor {
   def randomPosition :Position = {
    val pos = new Position(random.nextInt(11), random.nextInt(14))
    if (data(pos.x)(pos.y).equals(1)) {
-<<<<<<< HEAD
      if (keyAsValue.contains(pos)) randomPosition else pos
-=======
-     var keyAsValue = players.values.toList
-     if (!keyAsValue.contains(pos)) pos else randomPosition
->>>>>>> dfa872cf26dbed7d4de420bb12af431494ccd54b
      } else randomPosition
   }
   
   def addUserToScoreboard(username: String) = 
     scoreboardMap += (username -> 0)
-<<<<<<< HEAD
     
-=======
-
-
-  def updateScoreboard(username: String) = {
-    scoreboardMap.map(username.values + 10)
-  }
->>>>>>> dfa872cf26dbed7d4de420bb12af431494ccd54b
-  
   
   def move(username: String, xy: Int , dir: Int) = {
     val position = playersSet(username)
@@ -383,11 +317,7 @@ class Server extends Actor {
   
   def checkPositions (list: List[Position]): List[String] = {
     val buffer = new collection.mutable.ListBuffer[String]
-<<<<<<< HEAD
     for(lis <- list if players.valuesIterator.contains(lis)) {
-=======
-    for(lis <- list if pl.contains(lis)) {
->>>>>>> dfa872cf26dbed7d4de420bb12af431494ccd54b
       buffer += swap(lis)
     }
     var nameList = buffer.toList
