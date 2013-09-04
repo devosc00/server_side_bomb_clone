@@ -4,48 +4,87 @@ import akka.actor.{ActorRef, Actor, Props}
 import akka.pattern.ask
 import akka.util.Timeout
 import scala.concurrent.duration._
+import play.api._
 import play.api.libs.concurrent.Execution.Implicits._
 import play.api.libs.iteratee._
 import play.api.libs.json._
 import play.libs.Akka
 import play.libs.Time
+import play.api.libs.json.Json.JsValueWrapper
 import scala.collection.immutable.Map
 import scala.util.Random
+
+
+object ConsLogger {
+  
+  def apply(logger: ActorRef) {
+    
+    // Create an Iteratee that logs all messages to the console.
+    val loggerIteratee = Iteratee.foreach[JsValue](event => println(event.toString))
+    
+    implicit val timeout = Timeout(1 second)
+    // Make the robot join the room
+    logger ? (Join("ConsLogger")) map {
+      case Connected(robotChannel) => 
+        // Apply this Enumerator on the logger.
+        robotChannel |>> loggerIteratee
+    }
+    
+  }
+  
+}
 
 
 
 object Server {
   implicit val timeout = Timeout(1 second)
-  lazy val default = Akka.system.actorOf(Props[Server])
+ // lazy val default = Akka.system.actorOf(Props[Server])
+
+    lazy val default = {
+    val logActor = Akka.system.actorOf(Props[Server])
+    
+    // Create a bot user (just for fun)
+    ConsLogger(logActor)
+    
+    logActor
+  }
 
  def join(username:String):scala.concurrent.Future[(Iteratee[JsValue,_],Enumerator[JsValue])] = {
 
     (default ? Join(username)).map {
       case Connected(enumerator) => 
         val iteratee = Iteratee.foreach[JsValue]{event =>
-          default ! Mapa(username)}
+          default ! Event(username, event)}
         .mapDone { _ =>
           default ! Quit(username)
         }
         (iteratee,enumerator)
 
-      case _ =>
-        val iteratee   = Done[JsValue,Unit]((),Input.EOF)
-        val enumerator =
-          Enumerator[JsValue](Json.obj("error" -> "Server cannot create unique user name")) >>>
-          Enumerator.enumInput(Input.EOF)
+       case CannotConnect(error) => 
+      
+        // Connection error
+
+        // A finished Iteratee sending EOF
+        val iteratee = Done[JsValue,Unit]((),Input.EOF)
+
+        // Send an error and close the socket
+        val enumerator =  Enumerator[JsValue](JsObject(Seq("error" -> JsString(error))))
+        .andThen(Enumerator.enumInput(Input.EOF))
+        
         (iteratee,enumerator)
     }
   }
 }
 
 class Server extends Actor {
+  
+  var members = Map.empty[String, Concurrent.Channel[JsValue]]
   var playersSet = collection.mutable.Map.empty[String, Position]
   val random = new Random
   //var playersSet = Map.empty[String, Position]
   
   //zamiast 'data'
- def random2DimArray(dim1: Int, dim2: Int) = Array.fill(dim1, dim2){random.nextInt(3)}
+ def random2DimArray(dim1: Int, dim2: Int) = Array.fill(dim1, dim2){random.nextInt(2)}
  val data = random2DimArray(12, 15)
   var scoreboardMap = collection.mutable.Map.empty[String, Int]
   var userBombLimit = collection.mutable.Map.empty[String, Int]
@@ -55,7 +94,7 @@ class Server extends Actor {
   def scoreboard = scoreboardMap
   
     //wartość wyliczająca odbiorców, kanał nadawania do wszystkich
-  val (playersEnumerator, channel) = Concurrent.broadcast[JsValue]
+  //val (playersEnumerator, channel) = Concurrent.broadcast[JsValue]
   
   def receive = {
       
@@ -67,31 +106,73 @@ class Server extends Actor {
         playersSet += (username -> randomPosition)
         addBombToUser(username)
         addUserToScoreboard(username)
-        sender ! Connected(playersEnumerator)
+        val enumerator = Concurrent.unicast[JsValue]{
+             c => members = members + (username -> c)}
+        sender ! Connected(enumerator)
+        self ! NotifyJoin(username)
+      }
+    }
+
+
+    case NotifyJoin(username) => {
+      for(channel <- members.values){
+        channel.push(Json.obj(
+          "command" -> "join",
+          "username" -> (username)
+          )
+        )
+      }
+    }
+
+    case Event(username, event) => {
+      def getCommand(command: String) = (event \ command).as[String]
+      def getMove(command: String) = (event \ command).as[Int]
+
+      getCommand("command")match{
+        case "mapa" => self ! Mapa(username)
+        case "move" => self ! Move(username, getMove("xy"), getMove("dir") )
+        case "bomb" => self ! Bomb(username)
+        case "quit" => self ! Quit(username)
+        case _ => println("Unnable to parse message %s".format(event.toString))
       }
     }
 
     //dostaje plansze
     case Mapa(username) => {
-      sender ! (Json.arr(Json.obj(
+      for (channel <- members.get(username)){
+       channel.push(Json.obj(
           "command"-> "mapa",
           "data" -> (data),
-          "players" -> (players.toString),
-          "scoreboard" -> Json.arr(scoreboard.toString)
-          ))) 
+          "players" ->  Json.obj(players.map{case (s, o) =>
+              val ret:(String, JsValueWrapper) = o match {
+              case pos:Position => s -> Json.toJson(pos)
+              }
+              ret
+              }.toSeq:_*),
+          "scoreboard" -> Json.obj(scoreboard.map{case(k, v) => 
+                            val ret:(String, JsValueWrapper) = v match {
+                              case i:Int => k -> Json.arr(i)
+                              }
+                              ret}.toSeq:_*)  
+          ))
+      } 
     } 
         
-        
-    case Move(username, xy: Int, dir: Int ) => {
+        //Json.obj(players.keys.toString -> players.values.map(c => Json.arr(c.x, c.y)))
+    case Move(username, xy, dir) => {
       move(username, xy, dir)
       val pos = playersSet(username)
-      channel.push(Json.obj("command" -> "move", 
-    		  				"username" -> username,
-    		  				"pos" -> Json.arr(pos.x, pos.y)))
+      for(channel <- members.values){
+      channel.push(Json.obj(
+          "command" -> "move", 
+          "username" -> username,
+          "pos" -> Json.arr(pos.x, pos.y)))
+      }
     }
     
-    case Bomb() => {
-      
+    case Bomb(username) => {
+      bombCounter(username)
+      players(username)
     }
    
 
@@ -100,15 +181,14 @@ class Server extends Actor {
     case Quit(username) => 
       playersSet = playersSet - username
       removeUserAndBombs(username)
+      members = members - username
+      scoreboardMap = scoreboardMap - username
     
   }
   
-//komunikaty serwera  
-  def death(username: String) = {
-    
-  }
+//komunikaty serwera 
 
-   
+
   def reduceBomb(username: String) = {
     userBombLimit(username) = userBombLimit(username) - 1
     }                                             
@@ -119,16 +199,39 @@ class Server extends Actor {
    }                                           
    
   
-  def bombCounter(username: String, pos: Position) = {
-     if (haveBomb(username)) { Thread.sleep(2000)
-      channel.push(Json.arr(Json.obj("comand" -> "fire",
-          "player" -> username,
-           "x" -> pos.x ,"y" -> pos.y)))
+  def bombCounter(username: String) = {
+    val pos = players(username)
+     if (haveBomb(username)) { 
+      for (channel <- members.values){
+        channel.push(Json.obj(
+          "command" -> "bomb",
+          "x" -> pos.x,
+          "y" -> pos.y)
+          )
+      }
+      Thread.sleep(2000)
+      for(channel <- members.values){
+      channel.push(Json.obj(
+        "comand" -> "fire",
+        "player" -> username,
+        "x" -> pos.x ,
+        "y" -> pos.y)
+      )
+    }
            reduceBomb(username)
            updateBombs(username)
-           }
-           bomb(username)
-   }                                              
+           val killed = explosionArea(pos)
+           for(kill <- killed)
+             for(channel <- members.get(kill)){
+                updateScoreboard(username)
+             channel.push(Json.obj(
+              "command" -> "death"
+              )
+            )
+        }
+
+    }
+  }                                              
    
    
   def addBombToUser(username: String) = {
@@ -150,27 +253,25 @@ class Server extends Actor {
     }
   }
    
+  def keyAsValue = players.values.toList
+
   def randomPosition :Position = {
-   val pos = new Position(random.nextInt(3), random.nextInt(5))
+   val pos = new Position(random.nextInt(11), random.nextInt(14))
    if (data(pos.x)(pos.y).equals(1)) {
-     val keyAsValue = players.values
-     if (!keyAsValue.eq(pos)) pos else randomPosition
+     if (keyAsValue.contains(pos)) randomPosition else pos
      } else randomPosition
   }
   
   def addUserToScoreboard(username: String) = 
     scoreboardMap += (username -> 0)
-  
-  def removeUserFromScoreboard(username: String) = {
-    scoreboardMap -= (username)
-  }
+    
   
   def move(username: String, xy: Int , dir: Int) = {
     val position = playersSet(username)
     val moveBackY = {
       //po osi y
       if(xy.equals(0)){
-      	if(dir.equals(-1) && !position.y.equals(0)){
+        if(dir.equals(-1) && !position.y.equals(0)){
           if(!playersSet.valuesIterator.contains(position.x, position.y + dir) &&
           data(position.x)(position.y + dir).equals(1)){
           playersSet.update(username, Position(position.x, position.y + dir))
@@ -180,7 +281,7 @@ class Server extends Actor {
     }
       val moveForwardY = {
       if(xy.equals(0)){
-      	if(dir.equals(1) && !position.y.equals(5)){
+        if(dir.equals(1) && !position.y.equals(5)){
           if(!playersSet.valuesIterator.contains(position.x, position.y + dir) &&
           data(position.x)(position.y + dir).equals(1)){
           playersSet.update(username, Position(position.x, position.y + dir))
@@ -191,7 +292,7 @@ class Server extends Actor {
   //po osi x
       val moveBackX = {
       if(xy.equals(1)){
-      	if(dir.equals(-1) && !position.x.equals(0)){
+        if(dir.equals(-1) && !position.x.equals(0)){
           if(!playersSet.valuesIterator.contains(position.x + dir, position.y) &&
           data(position.x + dir)(position.y).equals(1)){
           playersSet.update(username, Position(position.x + dir, position.y))
@@ -201,7 +302,7 @@ class Server extends Actor {
     }
       val moveForwardX = {
       if(xy.equals(1)){
-      	if(dir.equals(1) && !position.x.equals(5)){
+        if(dir.equals(1) && !position.x.equals(5)){
           if(!playersSet.valuesIterator.contains(position.x + dir, position.y) &&
           data(position.x)(position.y + dir).equals(1)){
           playersSet.update(username, Position(position.x + dir, position.y))
@@ -212,6 +313,33 @@ class Server extends Actor {
 
   } 
   
+  val swap = players.map(_.swap)
   
+  def checkPositions (list: List[Position]): List[String] = {
+    val buffer = new collection.mutable.ListBuffer[String]
+    for(lis <- list if players.valuesIterator.contains(lis)) {
+      buffer += swap(lis)
+    }
+    var nameList = buffer.toList
+    nameList
+  }
+
+
+  def explosionArea(pos: Position) = { 
+    val buffer = new collection.mutable.ListBuffer[Position]
+    for (i <- pos.x - 2 to pos.x + 2){
+      buffer += Position(i , pos.y)
+    }
+    for (i <- pos.y - 2 to pos.y + 2){
+      buffer += Position(pos.x , i)
+    }
+    val list = buffer.distinct.toList
+//    println(list)
+    checkPositions(list)
+  }
+
+   def updateScoreboard(username: String) = {
+     scoreboardMap.update(username, scoreboardMap(username) + 10)
+  }
 
 }
