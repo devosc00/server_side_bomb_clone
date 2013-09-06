@@ -87,6 +87,7 @@ class Server extends Actor {
   //zamiast 'data'
  def random2DimArray(dim1: Int, dim2: Int) = Array.fill(dim1, dim2){random.nextInt(2)}
  val data = random2DimArray(25, 40)
+ val data = random2DimArray(12, 15)
   var scoreboardMap = collection.mutable.Map.empty[String, Int]
   var userBombLimit = collection.mutable.Map.empty[String, Int]
   
@@ -122,6 +123,7 @@ class Server extends Actor {
           "command" -> "join",
           "username" -> (username),
           "pos" -> Json.toJson(players.get(username))
+          "username" -> (username)
           )
         )
       }
@@ -324,7 +326,6 @@ class Server extends Actor {
       }
     }
       val moveForwardX = {
-      if(xy.equals(1)){
         if(dir.equals(1) && !position.x.equals(24)){
           if(!playersSet.valuesIterator.contains(position.x + dir, position.y) &&
           data(position.x)(position.y + dir).equals(1)){
