@@ -87,7 +87,6 @@ class Server extends Actor {
   //zamiast 'data'
  def random2DimArray(dim1: Int, dim2: Int) = Array.fill(dim1, dim2){random.nextInt(2)}
  val data = random2DimArray(25, 40)
- val data = random2DimArray(12, 15)
   var scoreboardMap = collection.mutable.Map.empty[String, Int]
   var userBombLimit = collection.mutable.Map.empty[String, Int]
   
@@ -123,7 +122,6 @@ class Server extends Actor {
           "command" -> "join",
           "username" -> (username),
           "pos" -> Json.toJson(players.get(username))
-          "username" -> (username)
           )
         )
       }
@@ -198,7 +196,7 @@ class Server extends Actor {
       members = members - username
       scoreboardMap = scoreboardMap - username
     }
-  }
+}  
   
 //komunikaty serwera  
 
@@ -333,9 +331,8 @@ class Server extends Actor {
           }
         }
       }
-     }
+  }
 
-  } 
   
   def checkPositions (list: List[Position]): List[String] = {
     val buffer = new collection.mutable.ListBuffer[String]
@@ -362,5 +359,5 @@ class Server extends Actor {
    def updateScoreboard(username: String, killed: Int) = {
      scoreboardMap.update(username, scoreboardMap(username) + (10 * killed))
   }
-
 }
+
