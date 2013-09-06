@@ -1,6 +1,5 @@
 package models
 
-<<<<<<< HEAD
 import play.api.libs.iteratee.Enumerator
 import play.api.libs.json._
 import play.api.libs.functional._
