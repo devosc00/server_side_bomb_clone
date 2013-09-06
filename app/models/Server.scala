@@ -36,15 +36,12 @@ object ConsLogger {
 }
 
 
-
 object Server {
   implicit val timeout = Timeout(1 second)
- // lazy val default = Akka.system.actorOf(Props[Server])
 
     lazy val default = {
     val logActor = Akka.system.actorOf(Props[Server])
     
-    // Create a bot user (just for fun)
     ConsLogger(logActor)
     
     logActor
@@ -82,9 +79,7 @@ class Server extends Actor {
   var members = Map.empty[String, Concurrent.Channel[JsValue]]
   var playersSet = collection.mutable.Map.empty[String, Position]
   val random = new Random
-  //var playersSet = Map.empty[String, Position]
   
-  //zamiast 'data'
  def random2DimArray(dim1: Int, dim2: Int) = Array.fill(dim1, dim2){random.nextInt(2)}
  val data = random2DimArray(25, 40)
   var scoreboardMap = collection.mutable.Map.empty[String, Int]
@@ -94,8 +89,6 @@ class Server extends Actor {
   def players = playersSet
   def scoreboard = scoreboardMap
   
-    //wartość wyliczająca odbiorców, kanał nadawania do wszystkich
-  //val (playersEnumerator, channel) = Concurrent.broadcast[JsValue]
   
   def receive = {
       
@@ -108,9 +101,10 @@ class Server extends Actor {
         addBombToUser(username)
         addUserToScoreboard(username)
         val enumerator = Concurrent.unicast[JsValue]{
-             c => members = members + (username -> c)}
+             c => members = members + (username -> c)
+           }
         sender ! Connected(enumerator)
-        Thread.sleep(1000)
+        Thread.sleep(100)
         self ! NotifyJoin(username)
       }
     }
@@ -136,11 +130,12 @@ class Server extends Actor {
         case "move" => self ! Move(username, getMove("xy"), getMove("dir") )
         case "bomb" => self ! Bomb(username)
         case "quit" => self ! Quit(username)
+        case "join" => self ! Join(username)
         case _ => println("Unnable to parse message %s".format(event.toString))
       }
     }
 
-    //dostaje plansze
+    //Get play map
         
  case Mapa(username) => {
       for (channel <- members.get(username)){
@@ -180,17 +175,7 @@ class Server extends Actor {
       bombCounter(username)
     }
    
-
-
-
     case Quit(username) => {
-     for(channel <- members.get(username)){
-      channel.push(Json.obj(
-        "command" -> "score",
-        "value" -> scoreboard.get(username)
-        )
-      )
-     }
       playersSet = playersSet - username
       removeUserAndBombs(username)
       members = members - username
@@ -199,8 +184,6 @@ class Server extends Actor {
 }  
   
 //komunikaty serwera  
-
-
 
   def reduceBomb(username: String) = {
     userBombLimit(username) = userBombLimit(username) - 1
@@ -227,16 +210,16 @@ class Server extends Actor {
       channel.push(Json.obj(
         "comand" -> "fire",
         "player" -> username,
-         "pos"-> Json.toJson(pos)
+        "pos"-> Json.toJson(pos)
         )
       )
     }
-           reduceBomb(username)
-           updateBombs(username)
-           val killed = explosionArea(pos)
-           if (!killed.isEmpty){
-            updateScoreboard(username, killed.length)
-             for(channel <- members.values){
+      reduceBomb(username)
+      updateBombs(username)
+      val killed = explosionArea(pos)
+      if (!killed.isEmpty){
+         updateScoreboard(username, killed.length)
+           for(channel <- members.values){
              channel.push(Json.obj(
               "command" -> "death",
               "player" -> Json.toJson(killed)
@@ -246,15 +229,15 @@ class Server extends Actor {
           for(kill <- killed)
               for(channel <- members.get(kill)){
             channel.push(Json.obj(
-        "command" -> "quit",
-        "score" -> scoreboard.get(kill)
+              "command" -> "score",
+              "score" -> scoreboard.get(kill)
               )
             )
-        
-        println(scoreboard.toString)
-          }
+          playersSet = playersSet - kill
+          removeUserAndBombs(kill)
         }
       }
+    }
   }                                              
    
    
@@ -262,7 +245,7 @@ class Server extends Actor {
     if(!bomb.contains(username)){
       userBombLimit = userBombLimit + (username -> 5)
     }
-  }                                               //> addBombToUser: (username: String)Any
+  }                                              
     
   def updateBombs(username: String) = {
     if(bomb(username) == 0){
