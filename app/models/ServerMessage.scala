@@ -28,4 +28,5 @@ case class Mapa   		(username: String)                          extends ServerMe
 case class Bomb			(username: String)	  				  		extends ServerMessage
 case class NotifyJoin   (username: String)                        	extends ServerMessage
 case class Quit         (username: String)                          extends ServerMessage
+case class Respawn		(username: String)							extends ServerMessage
 

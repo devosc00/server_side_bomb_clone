@@ -124,19 +124,23 @@ class Server extends Actor {
     }
 
     case Event(username, event) => {
-      if (players.contains(username))
-      {
+     
       def getCommand(command: String) = (event \ command).as[String]
       def getMove(command: String) = (event \ command).as[Int]
 
+      if (players.contains(username))
+      {
       getCommand("command")match{
         case "mapa" => self ! Mapa(username)
         case "move" => self ! Move(username, getMove("xy"), getMove("dir") )
         case "bomb" => self ! Bomb(username)
         //case "quit" => self ! Quit(username)
-        //case "respawn" => self ! Respawn(username)
-        case _ => self ! Quit(username)
+       // case "respawn" => self ! Respawn(username)
+        case _ => println("bad command")
       }
+    } else getCommand("command") match {
+        case "respawn" => self ! Respawn(username)
+        case _ => println("bad command")
     }
   }
     //Get play map
@@ -163,41 +167,25 @@ class Server extends Actor {
 
 
     case Move(username, xy: Int, dir: Int ) => {
-      move(username, xy, dir)
-      val pos = playersSet(username)
+      val pos = players(username)
+      val afterMove = move(username, xy, dir)
+      if ( !afterMove.equals(pos) )
+      {
       for(channel <- members.values){
       channel.push(Json.obj(
           "command" -> "move", 
           "username" -> username,
-          "pos" -> Json.toJson(pos)
+          "pos" -> Json.toJson(afterMove)
           )
-      )
+        )
+      }
     }
   }
 
+
     case Bomb(username) => {
-      bombCounter(username)
-    }
-   
-    case Quit(username) => {
-      playersSet = playersSet - username
-      removeUserAndBombs(username)
-      members = members - username
-      scoreboardMap = scoreboardMap - username
-       for(channel <- members.values){
-      channel.push(Json.obj(
-          "command" -> "quit", 
-          "username" -> username
-          )
-      )
-      }
-    }
-}  
-  
-//komunikaty serwera                                            
-   
-  def bombCounter(username: String) = {
-    val pos = players(username)
+
+     val pos = players(username)
      if (haveBomb(username)) 
      { 
       for (channel <- members.values)
@@ -207,7 +195,6 @@ class Server extends Actor {
           "pos" -> Json.toJson(pos)
           )
         )
-        
       }
       future {
         blocking { Thread.sleep(2000) }  
@@ -230,14 +217,44 @@ class Server extends Actor {
           {
           removeUserAndBombs(kill)
           playersSet = playersSet - kill 
-          //playersSet.update(kill, randomPosition)
           }
         }
       }
     }
-  }                                              
+    }
    
-   
+
+    case Quit(username) => {
+      playersSet = playersSet - username
+      removeUserAndBombs(username)
+      members = members - username
+      scoreboardMap = scoreboardMap - username
+       for(channel <- members.values){
+      channel.push(Json.obj(
+          "command" -> "quit", 
+          "username" -> username
+          )
+        )
+      }
+    }
+
+
+    case Respawn(username) => {
+      playersSet += (username -> randomPosition)
+      for(channel <- members.values)
+      {
+      channel.push(Json.obj(
+          "command" -> "respawn", 
+          "username" -> username,
+          "pos" -> Json.toJson(players(username))
+          )
+        )
+      }
+    }
+}  
+  
+//komunikaty serwera                                            
+                                        
   def addBombToUser(username: String) = {
     if(!bomb.contains(username)){
       userBombLimit = userBombLimit + (username -> 5)
@@ -253,9 +270,10 @@ class Server extends Actor {
      if (bomb.contains(username) && bomb(username) > 0) true else false
    }                                             
     
-  def updateBombs(username: String) = {
+  def updateBombs(username: String) = 
     if(bomb(username) == 0){
-    Thread.sleep(12000)
+      future{
+        blocking { Thread.sleep(12000) }
     userBombLimit(username) = userBombLimit(username) + 5
     }
   }
@@ -278,53 +296,107 @@ class Server extends Actor {
   def addUserToScoreboard(username: String) = 
     scoreboardMap += (username -> 0)
     
-  def move(username: String, xy: Int , dir: Int) = {
-    val position = playersSet(username)
-    val moveBackY = {
-      //po osi y
-      if(xy.equals(0)){
-        if(dir.equals(-1) && !position.y.equals(0)){
-          if(!playersSet.valuesIterator.contains(position.x, position.y + dir) &&
-          data(position.x)(position.y + dir).equals(1)){
-          playersSet.update(username, Position(position.x, position.y + dir))
-          }
-        }
-      }
-    }
-      val moveForwardY = {
-      if(xy.equals(0)){
-        if(dir.equals(1) && !position.y.equals(9)){
-          if(!playersSet.valuesIterator.contains(position.x, position.y + dir) &&
-          data(position.x)(position.y + dir).equals(1)){
-          playersSet.update(username, Position(position.x, position.y + dir))
-          }
-        }
-      }
-    } 
-  //po osi x
-      val moveBackX = {
-      if(xy.equals(1)){
-        if(dir.equals(-1) && !position.x.equals(0)){
-          if(!playersSet.valuesIterator.contains(position.x + dir, position.y) &&
-          data(position.x + dir)(position.y).equals(1)){
-          playersSet.update(username, Position(position.x + dir, position.y))
-          }
-        }
-      }
-    }
-      val moveForwardX = {
-        if(xy.equals(1)){
-        if(dir.equals(1) && !position.x.equals(14)){
-          if(!playersSet.valuesIterator.contains(position.x + dir, position.y) &&
-          data(position.x + dir)(position.y).equals(1)){
-          playersSet.update(username, Position(position.x + dir, position.y))
-          }
-        }
-      }
-    }
-  }
 
+  def move(username: String, xy: Int , dir: Int): Position = { 
+
+    val position = players(username)
+    val afterMoveY = Position(position.x, position.y + dir)
+    val afterMoveX = Position(position.x + dir, position.y)
   
+      def getMove( xy: Int , dir: Int ) : Position = {( xy, dir ) match {
+
+        case ( 0, -1 ) => {
+         if ( !playersSet.valuesIterator.contains(afterMoveY) && 
+            !position.y.equals(0) && data(position.x)(position.y + dir).equals(1))
+          {
+          playersSet.update(username, afterMoveY)
+          afterMoveY
+          } 
+            else position 
+          }
+
+        case ( 0, 1 ) => { 
+          if ( !playersSet.valuesIterator.contains(afterMoveY) && 
+            !position.y.equals(9) && data(position.x)(position.y + dir).equals(1))
+          {
+          playersSet.update(username, afterMoveY)
+          afterMoveY
+          } 
+            else position
+          }
+
+        case ( 1, -1 ) => {
+          if(!playersSet.valuesIterator.contains(afterMoveX) &&
+            !position.x.equals(0) && data(position.x + dir)(position.y).equals(1))
+          {
+          playersSet.update(username, afterMoveX)
+          afterMoveX
+          } 
+            else position
+          }
+
+        case ( 1, 1 ) => {
+          if(!playersSet.valuesIterator.contains(afterMoveX) &&
+            !position.x.equals(14) && data(position.x + dir)(position.y).equals(1))
+          {
+          playersSet.update(username, afterMoveX)
+          afterMoveX
+          } 
+            else position
+          }
+        }
+      }
+      getMove(xy, dir)
+    }
+   /* val moveY = {
+      if(xy.equals(0))
+      {
+        if(dir.equals(-1) && !position.y.equals(0))
+        {
+          if(!playersSet.valuesIterator.contains(afterMoveY) &&
+          data(position.x)(position.y + dir).equals(1))
+          {
+          playersSet.update(username, afterMoveY)
+          afterMoveY
+          }
+        }
+      }else if(dir.equals(1) && !position.y.equals(9))
+        {
+          if(!playersSet.valuesIterator.contains(afterMoveY) &&
+          data(position.x)(position.y + dir).equals(1))
+          {
+          playersSet.update(username, afterMoveY)
+          afterMoveY
+          }
+        }
+      }
+     
+      val moveX = {
+      if(xy.equals(1))
+      {
+        if(dir.equals(-1) && !position.x.equals(0))
+        {
+          if(!playersSet.valuesIterator.contains(afterMoveX) &&
+          data(position.x + dir)(position.y).equals(1))
+          {
+          playersSet.update(username, afterMoveX)
+          afterMoveX
+          }
+        }
+      }else if (dir.equals(1) && !position.x.equals(14))
+        {
+          if(!playersSet.valuesIterator.contains(afterMoveX) &&
+          data(position.x + dir)(position.y).equals(1))
+          {
+          playersSet.update(username, afterMoveX)
+          afterMoveX
+          }
+        } 
+     } 
+
+*/  
+  
+
   def checkPositions (list: List[Position]): List[String] = {
     val buffer = new collection.mutable.ListBuffer[String]
     val swap = playersSet.map(_.swap)
