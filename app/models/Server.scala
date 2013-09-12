@@ -134,8 +134,6 @@ class Server extends Actor {
         case "mapa" => self ! Mapa(username)
         case "move" => self ! Move(username, getMove("xy"), getMove("dir") )
         case "bomb" => self ! Bomb(username)
-        //case "quit" => self ! Quit(username)
-       // case "respawn" => self ! Respawn(username)
         case _ => println("bad command")
       }
     } else getCommand("command") match {
@@ -143,7 +141,6 @@ class Server extends Actor {
         case _ => println("bad command")
     }
   }
-    //Get play map
         
  case Mapa(username) => {
       for (channel <- members.get(username)){
@@ -348,54 +345,7 @@ class Server extends Actor {
       }
       getMove(xy, dir)
     }
-   /* val moveY = {
-      if(xy.equals(0))
-      {
-        if(dir.equals(-1) && !position.y.equals(0))
-        {
-          if(!playersSet.valuesIterator.contains(afterMoveY) &&
-          data(position.x)(position.y + dir).equals(1))
-          {
-          playersSet.update(username, afterMoveY)
-          afterMoveY
-          }
-        }
-      }else if(dir.equals(1) && !position.y.equals(9))
-        {
-          if(!playersSet.valuesIterator.contains(afterMoveY) &&
-          data(position.x)(position.y + dir).equals(1))
-          {
-          playersSet.update(username, afterMoveY)
-          afterMoveY
-          }
-        }
-      }
-     
-      val moveX = {
-      if(xy.equals(1))
-      {
-        if(dir.equals(-1) && !position.x.equals(0))
-        {
-          if(!playersSet.valuesIterator.contains(afterMoveX) &&
-          data(position.x + dir)(position.y).equals(1))
-          {
-          playersSet.update(username, afterMoveX)
-          afterMoveX
-          }
-        }
-      }else if (dir.equals(1) && !position.x.equals(14))
-        {
-          if(!playersSet.valuesIterator.contains(afterMoveX) &&
-          data(position.x + dir)(position.y).equals(1))
-          {
-          playersSet.update(username, afterMoveX)
-          afterMoveX
-          }
-        } 
-     } 
 
-*/  
-  
 
   def checkPositions (list: List[Position]): List[String] = {
     val buffer = new collection.mutable.ListBuffer[String]
