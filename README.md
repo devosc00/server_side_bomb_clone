@@ -1,5 +1,5 @@
 server_side_bomb_clone
 
-Simple, actor based, game implementation. 
+Simple actor based Bomberman game implementation. 
 Scala + Akka + Websocket + Json + Backend
 ======================
